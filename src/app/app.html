@@ -1,0 +1,116 @@
+<div class="flex h-screen overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-64 border-r border-primary/10 bg-white dark:bg-slate-900 hidden md:flex flex-col shrink-0">
+        <!-- Logo -->
+        <div class="p-6 flex items-center gap-3">
+            <div class="bg-primary p-1.5 rounded-lg">
+                <span class="material-symbols-outlined text-white">rocket_launch</span>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">GBT Admin</h1>
+        </div>
+
+        <!-- Nav -->
+        <nav class="flex-1 overflow-y-auto px-4 space-y-8 py-4">
+            <div>
+                <a routerLink="/dashboard" routerLinkActive="text-primary bg-primary/10"
+                    [routerLinkActiveOptions]="{exact:true}"
+                    class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    <span class="material-symbols-outlined">dashboard</span>
+                    <span class="text-sm font-semibold">Dashboard</span>
+                </a>
+            </div>
+
+            <div>
+                <p class="px-3 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Setup</p>
+                <div class="space-y-1">
+                    @for (item of navSetup; track item.label) {
+                    <a [routerLink]="item.route" routerLinkActive="text-primary bg-primary/10"
+                        class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        <span class="material-symbols-outlined text-[20px]">{{ item.icon }}</span>
+                        <span class="text-sm font-medium">{{ item.label }}</span>
+                    </a>
+                    }
+                </div>
+            </div>
+
+            <div>
+                <p class="px-3 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Customers</p>
+                <div class="space-y-1">
+                    @for (item of navCustomers; track item.label) {
+                    <a [routerLink]="item.route" routerLinkActive="text-primary bg-primary/10"
+                        class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        <span class="material-symbols-outlined text-[20px]">{{ item.icon }}</span>
+                        <span class="text-sm font-medium">{{ item.label }}</span>
+                    </a>
+                    }
+                </div>
+            </div>
+        </nav>
+
+        <!-- User -->
+        <div class="p-4 border-t border-primary/10">
+            <div
+                class="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
+                    <img class="w-full h-full object-cover"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAwghHy0E-IRh7owGZbnnhjMCPco0Xp2IStqb-FLqBI90itZouqoEhkfqijLNWrN0w6SCjZ3B7nFoGJUtB6xIlGdWLFOX4NMwghxM8sPoFAvm_qM79ctMh0wRRxHvD1BjdJzxkNN6sWYtfsp97NxvAeAKTzK8GYL2T4viy_ICFrm6RWDbmw8xZKXdSF5hZA784YpdgSP7GnitYZ828tbIc4xBj0MNL43tXG4EM2WYjgonmZHMYI4U9y9JZYVgnC4m0OLrQ7Mq02D9lG"
+                        [alt]="currentUser.name" />
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold truncate">{{ currentUser.name }}</p>
+                    <p class="text-xs text-slate-500 truncate">{{ currentUser.role }}</p>
+                </div>
+                <span class="material-symbols-outlined text-slate-400 text-[18px]">chevron_right</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main area -->
+    <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <!-- Header -->
+        <header
+            class="h-16 bg-white dark:bg-slate-900 border-b border-primary/10 px-8 flex items-center justify-between z-10 w-full shrink-0">
+            <div class="flex items-center gap-6">
+                <div
+                    class="flex items-center gap-2 px-3 py-1 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-full">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="text-xs font-bold text-green-700 dark:text-green-400">SERVERS HEALTHY</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="relative w-64">
+                    <span
+                        class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[20px]">search</span>
+                    <input
+                        class="w-full pl-10 pr-4 py-1.5 text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-lg focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+                        placeholder="Quick search..." type="text" [value]="searchQuery"
+                        (input)="onSearchChange($any($event.target).value)" />
+                </div>
+                <div class="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 ml-2 pl-4">
+                    <button
+                        class="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                        (click)="navigateTo('/alerts')">
+                        <span class="material-symbols-outlined">notifications</span>
+                        <span
+                            class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900"></span>
+                    </button>
+                    <button (click)="toggleDarkMode()"
+                        class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                        [title]="isDarkMode ? 'Light Mode' : 'Dark Mode'">
+                        <span class="material-symbols-outlined">{{ isDarkMode ? 'light_mode' : 'dark_mode' }}</span>
+                    </button>
+                    <button
+                        class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                        <span class="material-symbols-outlined">settings</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Routed page content -->
+        <div class="flex-1 overflow-y-auto">
+            <router-outlet />
+        </div>
+    </main>
+</div>
