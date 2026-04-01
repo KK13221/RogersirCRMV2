@@ -1,26 +1,52 @@
 import { Routes } from '@angular/router';
-import { DashboardComponent } from './pages/dashboard/dashboard';
-import { UsersComponent } from './pages/users/users';
-import { AlertsComponent } from './pages/alerts/alerts';
-import { DevelopmentComponent } from './pages/development/development';
-import { AppsComponent } from './pages/apps/apps';
-import { ArchiveComponent } from './pages/archive/archive';
-import { CustomerDashboardComponent } from './pages/customer-dashboard/customer-dashboard';
-import { ContactsComponent } from './pages/contacts/contacts';
-import { ServersComponent } from './pages/servers/servers';
-import { FinanceComponent } from './pages/finance/finance';
+import { authGuard } from './guards/auth.guard';
+
+import { LoginComponent }           from './pages/login/login';
+import { DashboardComponent }        from './pages/dashboard/dashboard';
+import { UsersComponent }            from './pages/users/users';
+import { AlertsComponent }           from './pages/alerts/alerts';
+import { DevelopmentComponent }      from './pages/development/development';
+import { AppsComponent }             from './pages/apps/apps';
+import { ArchiveComponent }          from './pages/archive/archive';
+import { CustomerDashboardComponent }from './pages/customer-dashboard/customer-dashboard';
+import { ContactsComponent }         from './pages/contacts/contacts';
+import { ServersComponent }          from './pages/servers/servers';
+import { FinanceComponent }          from './pages/finance/finance';
+import { CompaniesComponent }        from './pages/companies/companies';
+import { CompanyDetailComponent }    from './pages/company-detail/company-detail';
+import { CompanyDashboardComponent } from './pages/company-detail/company-dashboard';
+import { CompanyContactsComponent }  from './pages/company-detail/company-contacts';
+import { CompanyServersComponent }   from './pages/company-detail/company-servers';
+import { CompanyFinanceComponent }   from './pages/company-detail/company-finance';
 
 export const routes: Routes = [
-    { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
-    { path: 'dashboard', component: DashboardComponent },
-    { path: 'users', component: UsersComponent },
-    { path: 'alerts', component: AlertsComponent },
-    { path: 'development', component: DevelopmentComponent },
-    { path: 'apps', component: AppsComponent },
-    { path: 'archive', component: ArchiveComponent },
-    { path: 'customer-dashboard', component: CustomerDashboardComponent },
-    { path: 'contacts', component: ContactsComponent },
-    { path: 'servers', component: ServersComponent },
-    { path: 'finance', component: FinanceComponent },
+    // ── Public ──────────────────────────────────────────────────────────────
+    { path: 'login', component: LoginComponent },
+
+    // ── Protected (all require auth) ─────────────────────────────────────────
+    { path: '',             redirectTo: 'dashboard', pathMatch: 'full' },
+    { path: 'dashboard',    component: DashboardComponent,        canActivate: [authGuard] },
+    { path: 'users',        component: UsersComponent,            canActivate: [authGuard] },
+    { path: 'alerts',       component: AlertsComponent,           canActivate: [authGuard] },
+    { path: 'development',  component: DevelopmentComponent,      canActivate: [authGuard] },
+    { path: 'apps',         component: AppsComponent,             canActivate: [authGuard] },
+    { path: 'archive',      component: ArchiveComponent,          canActivate: [authGuard] },
+    { path: 'customer-dashboard', component: CustomerDashboardComponent, canActivate: [authGuard] },
+    { path: 'contacts',     component: ContactsComponent,         canActivate: [authGuard] },
+    { path: 'servers',      component: ServersComponent,          canActivate: [authGuard] },
+    { path: 'finance',      component: FinanceComponent,          canActivate: [authGuard] },
+    { path: 'companies',    component: CompaniesComponent,        canActivate: [authGuard] },
+    {
+        path: 'companies/:id',
+        component: CompanyDetailComponent,
+        canActivate: [authGuard],
+        children: [
+            { path: '',          redirectTo: 'dashboard', pathMatch: 'full' },
+            { path: 'dashboard', component: CompanyDashboardComponent },
+            { path: 'contacts',  component: CompanyContactsComponent  },
+            { path: 'servers',   component: CompanyServersComponent   },
+            { path: 'finance',   component: CompanyFinanceComponent   },
+        ]
+    },
     { path: '**', redirectTo: 'dashboard' }
 ];

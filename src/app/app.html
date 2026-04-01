@@ -1,13 +1,14 @@
 <div class="flex h-screen overflow-hidden">
 
-    <!-- Sidebar -->
+    @if (isLoggedIn) {
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
     <aside class="w-64 border-r border-primary/10 bg-white dark:bg-slate-900 hidden md:flex flex-col shrink-0">
         <!-- Logo -->
-        <div class="p-6 flex items-center gap-3">
-            <div class="bg-primary p-1.5 rounded-lg">
-                <span class="material-symbols-outlined text-white">rocket_launch</span>
-            </div>
-            <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">GBT Admin</h1>
+        <div class="px-5 py-4 flex items-center">
+            <img src="gbt-logo-light.png" alt="GBT Admin"
+                class="h-16 w-auto object-contain block dark:hidden" />
+            <img src="gbt-logo-dark.png" alt="GBT Admin"
+                class="h-16 w-auto object-contain hidden dark:block" />
         </div>
 
         <!-- Nav -->
@@ -48,26 +49,38 @@
             </div>
         </nav>
 
-        <!-- User -->
-        <div class="p-4 border-t border-primary/10">
-            <div
-                class="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                <div class="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden">
-                    <img class="w-full h-full object-cover"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAwghHy0E-IRh7owGZbnnhjMCPco0Xp2IStqb-FLqBI90itZouqoEhkfqijLNWrN0w6SCjZ3B7nFoGJUtB6xIlGdWLFOX4NMwghxM8sPoFAvm_qM79ctMh0wRRxHvD1BjdJzxkNN6sWYtfsp97NxvAeAKTzK8GYL2T4viy_ICFrm6RWDbmw8xZKXdSF5hZA784YpdgSP7GnitYZ828tbIc4xBj0MNL43tXG4EM2WYjgonmZHMYI4U9y9JZYVgnC4m0OLrQ7Mq02D9lG"
-                        [alt]="currentUser.name" />
+        <!-- User + Logout -->
+        <div class="p-4 border-t border-primary/10 space-y-2">
+            <!-- User info -->
+            <div class="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-xs font-black">{{ getInitials(currentUser.name) }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold truncate">{{ currentUser.name }}</p>
+                    <p class="text-sm font-semibold truncate text-slate-900 dark:text-white">{{ currentUser.name }}</p>
                     <p class="text-xs text-slate-500 truncate">{{ currentUser.role }}</p>
                 </div>
-                <span class="material-symbols-outlined text-slate-400 text-[18px]">chevron_right</span>
             </div>
+
+            <!-- Logout button -->
+            <button (click)="logout()"
+                class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold
+                       text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20
+                       border border-transparent hover:border-red-200 dark:hover:border-red-800
+                       transition-all cursor-pointer group">
+                <span class="material-symbols-outlined text-[20px] group-hover:translate-x-0.5 transition-transform">
+                    logout
+                </span>
+                Sign Out
+            </button>
         </div>
     </aside>
+    }
 
-    <!-- Main area -->
+    <!-- ── Main area ────────────────────────────────────────────────────── -->
     <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        @if (isLoggedIn) {
         <!-- Header -->
         <header
             class="h-16 bg-white dark:bg-slate-900 border-b border-primary/10 px-8 flex items-center justify-between z-10 w-full shrink-0">
@@ -77,6 +90,12 @@
                     <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                     <span class="text-xs font-bold text-green-700 dark:text-green-400">SERVERS HEALTHY</span>
                 </div>
+                @if (auth.currentUser()?.last_login_fmt) {
+                    <div class="hidden md:flex items-center gap-2 text-xs text-slate-500 px-3 py-1 bg-slate-50 dark:bg-slate-800/50 rounded-full border border-slate-200 dark:border-slate-700/50">
+                        <span class="material-symbols-outlined text-[14px]">history</span>
+                        <span>Last Login: <span class="font-semibold text-slate-700 dark:text-slate-300">{{ auth.currentUser()?.last_login_fmt }}</span></span>
+                    </div>
+                }
             </div>
             <div class="flex items-center gap-4">
                 <div class="relative w-64">
@@ -104,9 +123,16 @@
                         class="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
                         <span class="material-symbols-outlined">settings</span>
                     </button>
+                    <!-- Header logout button -->
+                    <button (click)="logout()"
+                        title="Sign Out"
+                        class="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg cursor-pointer transition-colors">
+                        <span class="material-symbols-outlined">logout</span>
+                    </button>
                 </div>
             </div>
         </header>
+        }
 
         <!-- Routed page content -->
         <div class="flex-1 overflow-y-auto">

@@ -1,6 +1,7 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { AuthService } from './services/auth.service';
 
 @Component({
   selector: 'app-root',
@@ -10,31 +11,38 @@ import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/rou
 })
 export class App implements OnInit {
   isDarkMode = false;
-  currentUser = { name: 'Alex Rivers', role: 'System Admin' };
   searchQuery = '';
 
+  auth = inject(AuthService);
+
+  get currentUser() {
+    const u = this.auth.currentUser();
+    return u ?? { name: 'Guest', email: '', role: '' };
+  }
+
+  get isLoggedIn() { return this.auth.isLoggedIn; }
+
   navSetup = [
-    { label: 'Users', icon: 'group', route: '/users' },
-    { label: 'Alerts', icon: 'notifications_active', route: '/alerts' },
-    { label: 'Development', icon: 'terminal', route: '/development' },
-    { label: 'Apps', icon: 'widgets', route: '/apps' },
-    { label: 'Archive', icon: 'archive', route: '/archive' },
+    { label: 'Users',       icon: 'group',                route: '/users' },
+    { label: 'Companies',   icon: 'business',             route: '/companies' },
+    { label: 'Alerts',      icon: 'notifications_active', route: '/alerts' },
+    { label: 'Development', icon: 'terminal',             route: '/development' },
+    { label: 'Apps',        icon: 'widgets',              route: '/apps' },
+    { label: 'Archive',     icon: 'archive',              route: '/archive' },
   ];
 
   navCustomers = [
-    { label: 'Customer Dashboard', icon: 'monitoring', route: '/customer-dashboard' },
-    { label: 'Contacts', icon: 'contact_page', route: '/contacts' },
-    { label: 'Servers', icon: 'dns', route: '/servers' },
-    { label: 'Finance', icon: 'account_balance', route: '/finance' },
+    { label: 'Customer Dashboard', icon: 'monitoring',       route: '/customer-dashboard' },
+    { label: 'Contacts',           icon: 'contact_page',     route: '/contacts' },
+    { label: 'Servers',            icon: 'dns',              route: '/servers' },
+    { label: 'Finance',            icon: 'account_balance',  route: '/finance' },
   ];
 
-  constructor(private router: Router) { }
+  constructor(private router: Router) {}
 
   ngOnInit() {
     const savedMode = localStorage.getItem('darkMode');
-    if (savedMode === 'true') {
-      this.enableDark();
-    }
+    if (savedMode === 'true') this.enableDark();
   }
 
   toggleDarkMode() {
@@ -53,11 +61,13 @@ export class App implements OnInit {
     localStorage.setItem('darkMode', 'true');
   }
 
-  onSearchChange(value: string) {
-    this.searchQuery = value;
-  }
+  onSearchChange(value: string) { this.searchQuery = value; }
 
-  navigateTo(route: string) {
-    this.router.navigate([route]);
+  navigateTo(route: string) { this.router.navigate([route]); }
+
+  logout() { this.auth.logout(); }
+
+  getInitials(name: string): string {
+    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
   }
 }
