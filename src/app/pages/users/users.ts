@@ -4,8 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { AuthService } from '../../services/auth.service';
 import { firstValueFrom } from 'rxjs';
+import { API_BASE_URL } from '../../config/api.config';
 
-const API_BASE = 'http://localhost/gbtbackend/api/users';
+const API_BASE = `${API_BASE_URL}/api/users`;
 
 interface User {
   id: number;

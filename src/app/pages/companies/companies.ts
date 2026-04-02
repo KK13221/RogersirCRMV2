@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
+import { API_BASE_URL } from '../../config/api.config';
 
 // ── Update this to match your PHP server URL ────────────────────────────────
 // If you run:  cd backend && php -S localhost:8000
 // Leave this as-is. Otherwise update to your XAMPP / server URL.
-const API_BASE = 'http://localhost/gbtbackend';
+const API_BASE = API_BASE_URL;
 
 interface Company {
   id?: number;

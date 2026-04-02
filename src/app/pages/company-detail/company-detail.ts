@@ -3,8 +3,9 @@ import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive, ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { CompanyService, CompanyInfo } from '../../services/company.service';
+import { API_BASE_URL } from '../../config/api.config';
 
-const API_BASE = 'http://localhost/gbtbackend';
+const API_BASE = API_BASE_URL;
 
 function avatarColor(name: string): string {
   const p = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316'];

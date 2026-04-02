@@ -2,6 +2,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { API_BASE_URL } from '../config/api.config';
 
 export interface AuthUser {
   id: number;
@@ -15,8 +16,8 @@ const STORAGE_KEY = 'gbt_auth_user';
 const TOKEN_KEY   = 'gbt_auth_token';
 
 // ── Point this to your PHP backend ──────────────────────────────────────────
-const LOGIN_URL = 'http://localhost/gbtbackend/api/auth/login.php';
-const LOGOUT_URL  = 'http://localhost/gbtbackend/api/auth/logout.php';
+const LOGIN_URL = `${API_BASE_URL}/api/auth/login.php`;
+const LOGOUT_URL  = `${API_BASE_URL}/api/auth/logout.php`;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
