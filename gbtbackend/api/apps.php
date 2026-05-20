@@ -127,6 +127,14 @@ try {
         $conn->query("ALTER TABLE app_artifacts ADD COLUMN uploaded_to_store_at TIMESTAMP NULL DEFAULT NULL");
     } catch (Exception $e) {
     }
+    try {
+        $conn->query("ALTER TABLE app_artifacts ADD COLUMN archived_at TIMESTAMP NULL DEFAULT NULL");
+    } catch (Exception $e) {
+    }
+    try {
+        $conn->query("ALTER TABLE app_artifacts MODIFY COLUMN store_upload_status VARCHAR(50) DEFAULT 'none'");
+    } catch (Exception $e) {
+    }
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(["success" => false, "message" => "Database error: " . $e->getMessage()]);
@@ -158,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && empty($_FILES) && 
 $rawInput = file_get_contents("php://input");
 $jsonInput = json_decode($rawInput, true);
 
-iif(!$cmd && isset($jsonInput['cmd'])) {
+if (!$cmd && isset($jsonInput['cmd'])) {
     $cmd = trim($jsonInput['cmd']);
 }
 
@@ -186,6 +194,7 @@ if ($cmd === 'check_live_version') {
 
     echo json_encode([
         "success" => true,
+        "status" => "success",
         "live_version" => $row ? $row['app_version'] : "Not Uploaded"
     ]);
     exit;
@@ -346,7 +355,7 @@ if ($cmd === 'save_app') {
         } else {
             $originalName = basename($file['name']);
             $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-            $allowed = ['zip', 'apk', 'ipa', 'exe', 'bin'];
+            $allowed = ['zip', 'apk', 'aab', 'ipa', 'exe', 'bin'];
 
             if (!in_array($ext, $allowed)) {
                 http_response_code(400);
@@ -424,19 +433,15 @@ if ($cmd === 'save_app') {
             if ($stmt->execute()) {
                 $newId = $conn->insert_id;
 
-                // Trigger auto-upload if enabled
-                if ($autoUpload == 1) {
-                    $workerScript = __DIR__ . '/../scripts/aws_upload_worker.php';
-                    if (file_exists($workerScript)) {
-                        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-                            pclose(popen("start /B php " . escapeshellarg($workerScript) . " " . escapeshellarg($newId) . " > NUL 2>&1", "r"));
-                        } else {
-                            exec("nohup php " . escapeshellarg($workerScript) . " " . escapeshellarg($newId) . " > /dev/null 2>&1 &");
-                        }
-                    }
-                }
+                // Auto-upload is triggered by the frontend after this response via cmd=store_upload.
+                // This prevents duplicate background workers and ensures fastlane_log_path is created.
 
-                echo json_encode(["success" => true, "message" => "Artifact saved successfully and previous versions archived.", "id" => $newId]);
+                echo json_encode([
+                    "success" => true,
+                    "message" => "Artifact saved successfully and previous versions archived.",
+                    "id" => $newId,
+                    "auto_upload" => $autoUpload
+                ]);
             } else {
                 http_response_code(500);
                 echo json_encode(["success" => false, "message" => $stmt->error]);
@@ -582,6 +587,35 @@ if ($cmd === 'store_upload') {
         exit;
     }
 
+    if (empty($artifact['binary_file_name'])) {
+        echo json_encode(["success" => false, "message" => "No binary file attached to this artifact."]);
+        exit;
+    }
+
+    if ($artifact['platform'] === 'Android') {
+        $ext = strtolower($artifact['binary_file_ext'] ?? '');
+        if (!in_array($ext, ['aab', 'apk'], true)) {
+            echo json_encode(["success" => false, "message" => "Android store upload requires .aab or .apk file."]);
+            exit;
+        }
+        if (empty($artifact['package_name'])) {
+            echo json_encode(["success" => false, "message" => "Package name is required for Android Play Store upload."]);
+            exit;
+        }
+    }
+
+    if ($artifact['platform'] === 'iOS') {
+        $ext = strtolower($artifact['binary_file_ext'] ?? '');
+        if ($ext !== 'ipa') {
+            echo json_encode(["success" => false, "message" => "iOS store upload requires .ipa file."]);
+            exit;
+        }
+        if (empty($artifact['package_name'])) {
+            echo json_encode(["success" => false, "message" => "Bundle ID is required for iOS upload."]);
+            exit;
+        }
+    }
+
     $statusUpdate = $conn->prepare("UPDATE app_artifacts SET store_upload_status = 'processing', store_upload_message = 'Initiating Fastlane...' WHERE id = ?");
     $statusUpdate->bind_param("i", $id);
     $statusUpdate->execute();
@@ -602,8 +636,13 @@ if ($cmd === 'store_upload') {
     $logUpdate->execute();
 
     if (!file_exists($scriptPath)) {
+        $failMsg = "Automation script missing on server: $scriptPath";
+        $failUpdate = $conn->prepare("UPDATE app_artifacts SET store_upload_status = 'failed', store_upload_message = ? WHERE id = ?");
+        $failUpdate->bind_param("si", $failMsg, $id);
+        $failUpdate->execute();
+
         http_response_code(400);
-        echo json_encode(["success" => false, "message" => "Automation script missing on server: $scriptPath"]);
+        echo json_encode(["success" => false, "message" => $failMsg]);
         exit;
     }
 

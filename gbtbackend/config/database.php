@@ -4,9 +4,9 @@ class Database
 {
     // ── Update these to match your MySQL setup ──
     public $host = "localhost";
-    public $db_name = "lmhaiss_app4";
-    public $username = "lmhaiss_app4";
-    public $password = "tedzZXe4EsSptezVsH7z";
+    public $db_name = "gbt_dashboard";
+    public $username = "root";
+    public $password = "";
     public $charset = "utf8mb4";
 
     public $conn = null;

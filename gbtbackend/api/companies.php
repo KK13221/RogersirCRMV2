@@ -1,9 +1,26 @@
 <?php
-
-
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+$rawInput = file_get_contents("php://input");
+$jsonInput = json_decode($rawInput, true);
+
+if (is_array($jsonInput)) {
+    $_POST = array_merge($_POST, $jsonInput);
+}
+
+$cmd = $_POST['cmd'] ?? $_GET['cmd'] ?? '';
 // ── CORS Headers ─────────────────────────────────────────────────────────────
 header("Access-Control-Allow-Origin: *");
 header("Content-Type: application/json; charset=UTF-8");
@@ -23,7 +40,45 @@ $database = new Database();
 $db = $database->getConnection();
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Ensure companies table exists
+function normalizeAdminUrl($url)
+{
+    $adminUrl = trim((string) $url);
+
+    if ($adminUrl === '') {
+        return '';
+    }
+
+    if (!preg_match('~^https?://~i', $adminUrl)) {
+        $adminUrl = 'https://' . $adminUrl;
+    }
+
+    $adminUrl = rtrim($adminUrl, '/');
+
+    // Keep admin_url as base URL only. Full API paths are invalid.
+    if (preg_match('~/eld_log/~i', $adminUrl)) {
+        throw new Exception('Invalid admin URL. Please enter base URL only, for example https://admin.truckertraceeld.com');
+    }
+
+    if (!filter_var($adminUrl, FILTER_VALIDATE_URL)) {
+        throw new Exception('Invalid admin URL format');
+    }
+
+    return $adminUrl;
+}
+
+function requireFields($data, $fields)
+{
+    foreach ($fields as $field) {
+        if (empty(trim($data[$field] ?? ''))) {
+            http_response_code(422);
+            echo json_encode(['status' => 'error', 'message' => "Field '{$field}' is required"]);
+            exit();
+        }
+    }
+}
+
+
+// Ensure companies table exists and has correct structure
 try {
     $db->exec("CREATE TABLE IF NOT EXISTS companies (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -34,37 +89,19 @@ try {
         owner_email VARCHAR(255) NOT NULL,
         address TEXT,
         admin_url VARCHAR(255) NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )");
 
-    // Final Seeding Logic: Ensure all 3 production companies exist
-    $seeds = [
-        ['SAMI ELD', 'Premium', 'Sami', '9876543210', 'sami@eld.com', 'USA', 'https://samield.com'],
-        ['Allstar Logistics', 'Standard', 'John Allstar', '1234567890', 'contact@allstar.com', 'Chicago, IL', 'https://admin.allstarelogs.com'],
-        ['Trucker Terrace', 'Enterprise', 'Mike Trucker', '5550123456', 'info@truckerterrace.com', 'Dallas, TX', 'https://admin.truckertraceeld.com']
-    ];
-
-    foreach ($seeds as $s) {
-        // Use a more inclusive search for the name
-        $name = $s[0];
-        $searchName = '%' . explode(' ', $name)[0] . '%'; // e.g., 'Allstar', 'Trucker', 'SAMI'
-        
-        $stmt = $db->prepare("SELECT id FROM companies WHERE company_name LIKE ?");
-        $stmt->execute([$searchName]);
-        $existing = $stmt->fetch();
-
-        if (!$existing) {
-            // Not found at all - INSERT
-            $ins = $db->prepare("INSERT INTO companies (company_name, package_name, owner_name, owner_mobile, owner_email, address, admin_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $ins->execute($s);
-        } else {
-            // Found - UPDATE URL to make sure it's the live production one
-            $upd = $db->prepare("UPDATE companies SET admin_url = ? WHERE id = ?");
-            $upd->execute([$s[6], $existing['id']]);
-        }
+    // Migration: Add updated_at if missing (MySQL doesn't support ADD COLUMN IF NOT EXISTS easily without MariaDB)
+    // So we check if column exists first
+    $check = $db->query("SHOW COLUMNS FROM companies LIKE 'updated_at'");
+    if ($check->rowCount() == 0) {
+        $db->exec("ALTER TABLE companies ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
     }
 } catch (Exception $e) {
-    // Ignore if it fails due to permissions, etc.
+    // Log error but continue
+    error_log("Database Migration Error: " . $e->getMessage());
 }
 
 // ── Route Handlers ─────────────────────────────────────────────────────────────
@@ -96,15 +133,7 @@ try {
                 exit();
             }
 
-            // Validate required fields
-            $required = ['company_name', 'owner_name', 'owner_mobile', 'owner_email', 'admin_url'];
-            foreach ($required as $field) {
-                if (empty(trim($data[$field] ?? ''))) {
-                    http_response_code(422);
-                    echo json_encode(["status" => "error", "message" => "Field '{$field}' is required"]);
-                    exit();
-                }
-            }
+            requireFields($data, ['company_name', 'owner_name', 'owner_mobile', 'owner_email', 'admin_url']);
 
             // Basic email validation
             if (!filter_var($data['owner_email'], FILTER_VALIDATE_EMAIL)) {
@@ -113,11 +142,7 @@ try {
                 exit();
             }
 
-            // Auto-prepend https:// if missing
-            $adminUrl = trim($data['admin_url']);
-            if (!empty($adminUrl) && !preg_match('~^(?:f|ht)tps?://~i', $adminUrl)) {
-                $adminUrl = "https://" . $adminUrl;
-            }
+            $adminUrl = normalizeAdminUrl($data['admin_url']);
 
             $query = "INSERT INTO companies
                     (company_name, package_name, owner_name, owner_mobile, owner_email, address, admin_url)
@@ -131,7 +156,7 @@ try {
             $stmt->bindValue(':owner_mobile', trim($data['owner_mobile']));
             $stmt->bindValue(':owner_email', trim($data['owner_email']));
             $stmt->bindValue(':address', trim($data['address'] ?? ''));
-            $stmt->bindValue(':admin_url', rtrim($adminUrl, '/'));
+            $stmt->bindValue(':admin_url', $adminUrl);
 
             if ($stmt->execute()) {
                 $newId = $db->lastInsertId();
@@ -171,19 +196,15 @@ try {
                 exit();
             }
 
-            $required = ['company_name', 'owner_name', 'owner_mobile', 'owner_email', 'admin_url'];
-            foreach ($required as $field) {
-                if (empty(trim($data[$field] ?? ''))) {
-                    http_response_code(422);
-                    echo json_encode(['status' => 'error', 'message' => "Field '{$field}' is required"]);
-                    exit();
-                }
+            requireFields($data, ['company_name', 'owner_name', 'owner_mobile', 'owner_email', 'admin_url']);
+
+            if (!filter_var($data['owner_email'], FILTER_VALIDATE_EMAIL)) {
+                http_response_code(422);
+                echo json_encode(['status' => 'error', 'message' => 'Invalid email address']);
+                exit();
             }
 
-            $adminUrl = trim($data['admin_url']);
-            if (!empty($adminUrl) && !preg_match('~^(?:f|ht)tps?://~i', $adminUrl)) {
-                $adminUrl = "https://" . $adminUrl;
-            }
+            $adminUrl = normalizeAdminUrl($data['admin_url']);
 
             $query = 'UPDATE companies SET
                     company_name = :company_name,
@@ -202,7 +223,7 @@ try {
             $stmt->bindValue(':owner_mobile', trim($data['owner_mobile']));
             $stmt->bindValue(':owner_email', trim($data['owner_email']));
             $stmt->bindValue(':address', trim($data['address'] ?? ''));
-            $stmt->bindValue(':admin_url', rtrim($adminUrl, '/'));
+            $stmt->bindValue(':admin_url', $adminUrl);
             $stmt->bindValue(':id', $id, PDO::PARAM_INT);
 
             if ($stmt->execute()) {

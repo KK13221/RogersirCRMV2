@@ -885,7 +885,10 @@ export class CompanyDashboardComponent {
     this.analytics = null;
     this.cdr.detectChanges();
 
-    this.http.post<any>(`${adminUrl}/eld_log/master/view_project_detail_analytics`, {}).subscribe({
+    const apiUrl = this.companyService.buildLiveApiUrl(adminUrl, 'analytics');
+    console.log('[LIVE_API][Analytics]', { company: this.company?.company_name, adminUrl, apiUrl });
+
+    this.http.post<any>(apiUrl, {}).subscribe({
       next: (res) => {
         this.analytics = res?.status === 'SUCCESS' ? res.result as AnalyticsResult : null;
         if (!this.analytics) this.error = res?.message ?? 'Unexpected response.';
@@ -893,7 +896,7 @@ export class CompanyDashboardComponent {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.error = 'Could not reach the server.';
+        this.error = `Could not reach live API for ${this.company?.company_name || 'selected company'}.`;
         this.loading = false;
         this.cdr.detectChanges();
       }
@@ -942,7 +945,10 @@ export class CompanyDashboardComponent {
     this.drivers = [];
     this.cdr.detectChanges();
 
-    this.http.post<any>(`${c.admin_url}/eld_log/master/view_driver_information`, { employeeId: '0' }).subscribe({
+    const apiUrl = this.companyService.buildLiveApiUrl(c.admin_url, 'drivers');
+    console.log('[LIVE_API][Drivers]', { company: c.company_name, adminUrl: c.admin_url, apiUrl });
+
+    this.http.post<any>(apiUrl, { employeeId: '0' }).subscribe({
       next: (res) => {
         this.drivers = res?.status === 'SUCCESS' && Array.isArray(res?.result) ? res.result : [];
         if (!this.drivers.length && res?.status !== 'SUCCESS') this.driversError = res?.message ?? 'No drivers found.';
@@ -950,7 +956,7 @@ export class CompanyDashboardComponent {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.driversError = `Could not load drivers.`;
+        this.driversError = `Could not load live drivers from ${c.company_name}.`;
         this.driversLoading = false;
         this.cdr.detectChanges();
       }
@@ -975,7 +981,10 @@ export class CompanyDashboardComponent {
     this.clients = [];
     this.cdr.detectChanges();
 
-    this.http.post<any>(`${c.admin_url}/eld_log/master/view_client`, { clientId: 0 }).subscribe({
+    const apiUrl = this.companyService.buildLiveApiUrl(c.admin_url, 'clients');
+    console.log('[LIVE_API][Clients]', { company: c.company_name, adminUrl: c.admin_url, apiUrl });
+
+    this.http.post<any>(apiUrl, { clientId: 0 }).subscribe({
       next: (res) => {
         this.clients = res?.status === 'SUCCESS' && Array.isArray(res?.result) ? res.result : [];
         if (!this.clients.length && res?.status !== 'SUCCESS') this.clientsError = res?.message ?? 'No clients found.';
@@ -983,7 +992,7 @@ export class CompanyDashboardComponent {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.clientsError = 'Could not load client/company data.';
+        this.clientsError = `Could not load live clients/subcompanies from ${c.company_name}.`;
         this.clientsLoading = false;
         this.cdr.detectChanges();
       }
@@ -1013,8 +1022,11 @@ export class CompanyDashboardComponent {
     this.vehicles = [];
     this.cdr.detectChanges();
 
+    const apiUrl = this.companyService.buildLiveApiUrl(c.admin_url, 'activeVehicles');
+    console.log('[LIVE_API][Vehicles]', { company: c.company_name, adminUrl: c.admin_url, apiUrl });
+
     this.http.post<any>(
-      `${c.admin_url}/eld_log/master/view_active_vehicle`,
+      apiUrl,
       { vehicleId: 0, clientId: 0 }
     ).subscribe({
       next: (res) => {
@@ -1024,7 +1036,7 @@ export class CompanyDashboardComponent {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.vehiclesError = `Could not load vehicles.`;
+        this.vehiclesError = `Could not load live vehicles from ${c.company_name}.`;
         this.vehiclesLoading = false;
         this.cdr.detectChanges();
       }
