@@ -8,7 +8,7 @@ import { API_BASE_URL } from '../../config/api.config';
 const API_BASE = API_BASE_URL;
 
 function avatarColor(name: string): string {
-  const p = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316'];
+  const p = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316'];
   return p[name.charCodeAt(0) % p.length];
 }
 
@@ -95,10 +95,10 @@ export class CompanyDetailComponent implements OnInit, OnDestroy {
   loading = false;
 
   tabs = [
-    { label: 'Customer Dashboard', icon: 'monitoring',       path: 'dashboard' },
-    { label: 'Contacts',           icon: 'contact_page',     path: 'contacts'  },
-    { label: 'Server Monitoring',  icon: 'dns',              path: 'servers'   },
-    { label: 'Finance & Billing',  icon: 'account_balance',  path: 'finance'   },
+    { label: 'Customer Dashboard', icon: 'monitoring', path: 'dashboard' },
+    { label: 'Contacts', icon: 'contact_page', path: 'contacts' },
+    { label: 'Server Monitoring', icon: 'dns', path: 'servers' },
+    { label: 'Finance & Billing', icon: 'account_balance', path: 'finance' },
   ];
 
   private companyService = inject(CompanyService);
@@ -123,7 +123,8 @@ export class CompanyDetailComponent implements OnInit, OnDestroy {
     this.http.get<any>(`${API_BASE}/api/companies.php`).subscribe({
       next: (res) => {
         const companies: CompanyInfo[] = res.data ?? [];
-        this.company = companies.find(c => c.id === this.companyId) ?? null;
+        const selected = companies.find(c => c.id === this.companyId) ?? null;
+        this.company = selected ? this.companyService.normalizeCompany(selected) : null;
         this.companyService.currentCompany.set(this.company);
         this.loading = false;
         this.cdr.detectChanges();

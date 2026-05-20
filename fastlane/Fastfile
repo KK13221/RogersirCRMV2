@@ -1,74 +1,79 @@
-# Fastlane Configuration Fastfile
-
 default_platform(:android)
 
 platform :android do
-  desc "Upload APK to Google Play Store"
+  desc "Upload Android AAB/APK to Google Play Store"
   lane :android_upload do |options|
-    apk_path = options[:apk]
-    track = options[:track] || 'internal' # Default to internal, can be 'production', 'beta', 'alpha'
-    
-    # Validate file exists
-    unless File.exist?(apk_path)
-      UI.error("APK file not found at path: #{apk_path}")
-      next
+    artifact_path = options[:artifact_path] || options[:aab] || options[:apk]
+    package_name = options[:package_name]
+    track = options[:track] || "internal"
+
+    UI.user_error!("artifact_path/aab/apk is required") if artifact_path.to_s.empty?
+    UI.user_error!("package_name is required") if package_name.to_s.empty?
+    UI.user_error!("File not found: #{artifact_path}") unless File.exist?(artifact_path)
+
+    upload_options = {
+      json_key: "/opt/app_deployer/keys/play_store_key.json",
+      package_name: package_name,
+      track: track,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    }
+
+    if artifact_path.end_with?(".aab")
+      upload_to_play_store(upload_options.merge(aab: artifact_path))
+    else
+      upload_to_play_store(upload_options.merge(apk: artifact_path))
     end
 
-    UI.message("--- Fastlane: Starting Android Upload for #{apk_path} on track: #{track} ---")
-    
-    # Dynamic package_name injection for Multi-Tenant Support
-    # Priority: ENV variable > Appfile
-    package_name = ENV["FASTLANE_APP_IDENTIFIER"] || CredentialsManager::AppfileConfig.try_fetch_value(:package_name)
-    
-    UI.message("Package Name: #{package_name}")
+    UI.success("SUCCESS: Uploaded Android build to Google Play")
+  end
 
-    begin
-      supply(
-        apk: apk_path,
-        track: track,
-        package_name: package_name,
-        json_key: "google_play_key.json",
-        skip_upload_metadata: true,
-        skip_upload_images: true,
-        skip_upload_screenshots: true
-      )
-      UI.success("Successfully uploaded Android artifact to Google Play Store!")
-    rescue => e
-      UI.error("Android Upload Failed: #{e.message}")
-      raise e
-    end
+  desc "Backward compatible Android deploy lane"
+  lane :deploy do |options|
+    android_upload(options)
   end
 end
 
 platform :ios do
-  desc "Upload IPA to App Store Connect"
+  desc "Upload iOS IPA to App Store Connect / TestFlight"
   lane :ios_upload do |options|
-    ipa_path = options[:ipa]
-    
-    unless File.exist?(ipa_path)
-      UI.error("IPA file not found at path: #{ipa_path}")
-      next
-    end
+    ipa_path = File.expand_path(options[:ipa_path] || options[:ipa])
+    bundle_id = options[:bundle_id] || options[:app_identifier] || ENV["FASTLANE_APP_IDENTIFIER"]
 
-    UI.message("--- Fastlane: Starting iOS Upload for #{ipa_path} ---")
+    UI.user_error!("ipa/ipa_path is required") if ipa_path.to_s.empty?
+    UI.user_error!("bundle_id/app_identifier is required") if bundle_id.to_s.empty?
+    UI.user_error!("IPA file not found: #{ipa_path}") unless File.exist?(ipa_path)
 
-    # Dynamic app_identifier injection
-    app_id = ENV["FASTLANE_APP_IDENTIFIER"] || CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)
+    ENV["HOME"] ||= "/tmp"
+    ENV["TMPDIR"] ||= "/tmp"
+    ENV["FASTLANE_SKIP_UPDATE_CHECK"] = "true"
+    ENV["FASTLANE_ITUNES_TRANSPORTER_USE_SHELL_SCRIPT"] = "true"
 
-    begin
-      # Deliver handles the upload
-      deliver(
-        ipa: ipa_path,
-        app_identifier: app_id,
-        skip_screenshots: true,
-        skip_metadata: true,
-        force: true, # Skips HTML report verification
-        run_precheck_before_submit: false
-      )
-      UI.success("Successfully uploaded iOS artifact to App Store Connect!")
-    rescue => e
-      UI.error("iOS Upload Failed: #{e.message}")
-      raise e
-    end
+    key_path = "/opt/app_deployer/keys/AuthKey_5N3VNH482D.p8"
+    UI.user_error!("App Store Connect API key not found: #{key_path}") unless File.exist?(key_path)
+
+    api_key = app_store_connect_api_key(
+      key_id: "5N3VNH482D",
+      issuer_id: "970b7703-60fb-40d5-9160-6ac09401492c",
+      key_filepath: key_path,
+      duration: 1200,
+      in_house: false
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa_path,
+      app_identifier: bundle_id,
+      skip_waiting_for_build_processing: true
+    )
+
+    UI.success("SUCCESS: Uploaded iOS IPA to App Store Connect / TestFlight")
+  end
+
+  desc "Backward compatible iOS deploy lane"
+  lane :deploy do |options|
+    ios_upload(options)
   end
 end

@@ -1,5 +1,5 @@
 <?php
-// AWS Upload Worker Script
+// AWS Upload Worker Script for Android Play Store and iOS TestFlight
 
 $id = isset($argv[1]) ? intval($argv[1]) : 0;
 if ($id <= 0) {
@@ -16,6 +16,18 @@ $logFile = $logDir . '/fastlane_' . $id . '.log';
 function writeLog($logFile, $message)
 {
     file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] " . $message . "\n", FILE_APPEND);
+}
+
+function updateArtifactStatus($conn, $id, $status, $message, $markUploaded = false)
+{
+    if ($markUploaded) {
+        $stmt = $conn->prepare("UPDATE app_artifacts SET store_upload_status = ?, store_upload_message = ?, uploaded_to_store_at = NOW() WHERE id = ?");
+        $stmt->bind_param("ssi", $status, $message, $id);
+    } else {
+        $stmt = $conn->prepare("UPDATE app_artifacts SET store_upload_status = ?, store_upload_message = ? WHERE id = ?");
+        $stmt->bind_param("ssi", $status, $message, $id);
+    }
+    $stmt->execute();
 }
 
 file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] Starting AWS Upload Worker for Artifact ID: $id\n");
@@ -38,6 +50,7 @@ if ($conn->connect_error) {
     writeLog($logFile, "DB Connection failed: " . $conn->connect_error);
     exit;
 }
+$conn->set_charset("utf8mb4");
 
 $stmt = $conn->prepare("SELECT * FROM app_artifacts WHERE id = ?");
 $stmt->bind_param("i", $id);
@@ -50,41 +63,73 @@ if (!$artifact) {
     exit;
 }
 
-$uploadDir = __DIR__ . '/../storage/apps/';
-$localApkPath = $uploadDir . $artifact['binary_file_name'];
+$platform = trim($artifact['platform'] ?? '');
+$binaryName = trim($artifact['binary_file_name'] ?? '');
+$binaryExt = strtolower(trim($artifact['binary_file_ext'] ?? pathinfo($binaryName, PATHINFO_EXTENSION)));
 
-if (!file_exists($localApkPath)) {
-    $msg = "Local APK not found: $localApkPath";
+if ($binaryName === '') {
+    $msg = "No binary file attached to this artifact.";
     writeLog($logFile, $msg);
-
-    $safeMsg = $conn->real_escape_string($msg);
-    $conn->query("UPDATE app_artifacts SET store_upload_status = 'failed', store_upload_message = '$safeMsg' WHERE id = $id");
-
+    updateArtifactStatus($conn, $id, 'failed', $msg);
     $conn->close();
     exit;
 }
 
-$remoteFilePathRaw = "/opt/app_deployer/binaries/" . $artifact['binary_file_name'];
-$remoteFilePath = escapeshellarg($remoteFilePathRaw);
+$uploadDir = __DIR__ . '/../storage/apps/';
+$localFilePath = $uploadDir . $binaryName;
 
-$remoteJsonKey = "/opt/app_deployer/keys/play_store_key.json";
-$remoteAppleKey = "/opt/app_deployer/keys/app_store_key.p8";
+if (!file_exists($localFilePath)) {
+    $msg = "Local binary not found: $localFilePath";
+    writeLog($logFile, $msg);
+    updateArtifactStatus($conn, $id, 'failed', $msg);
+    $conn->close();
+    exit;
+}
 
 $packageName = !empty($artifact['package_name'])
-    ? $artifact['package_name']
-    : "com.gbt." . preg_replace('/[^a-zA-Z0-9]/', '', strtolower($artifact['company']));
+    ? trim($artifact['package_name'])
+    : "com.gbt." . preg_replace('/[^a-zA-Z0-9]/', '', strtolower($artifact['company'] ?? 'app'));
 
-$conn->query("UPDATE app_artifacts SET store_upload_status = 'processing', store_upload_message = 'Uploading APK to AWS...' WHERE id = $id");
+$releaseTrack = !empty($artifact['release_track']) ? trim($artifact['release_track']) : 'internal';
+
+if ($platform === 'Android' && !in_array($binaryExt, ['aab', 'apk'], true)) {
+    $msg = "Android upload requires .aab or .apk file. Current file: .$binaryExt";
+    writeLog($logFile, $msg);
+    updateArtifactStatus($conn, $id, 'failed', $msg);
+    $conn->close();
+    exit;
+}
+
+if ($platform === 'iOS' && $binaryExt !== 'ipa') {
+    $msg = "iOS upload requires .ipa file. Current file: .$binaryExt";
+    writeLog($logFile, $msg);
+    updateArtifactStatus($conn, $id, 'failed', $msg);
+    $conn->close();
+    exit;
+}
+
+if ($packageName === '') {
+    $msg = ($platform === 'iOS') ? "Bundle ID is required for iOS upload." : "Package name is required for Android upload.";
+    writeLog($logFile, $msg);
+    updateArtifactStatus($conn, $id, 'failed', $msg);
+    $conn->close();
+    exit;
+}
+
+$remoteFilePathRaw = "/opt/app_deployer/binaries/" . $binaryName;
+$remoteFilePath = escapeshellarg($remoteFilePathRaw);
+
+updateArtifactStatus($conn, $id, 'processing', 'Uploading binary to AWS...');
 
 // Step 1: SCP upload
-writeLog($logFile, "Transferring " . $artifact['binary_file_ext'] . " to AWS via SCP...");
+writeLog($logFile, "Transferring .$binaryExt to AWS via SCP...");
 
 $scpCmd = sprintf(
-    'timeout 600 scp -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no -i "%s" "%s" %s@%s:%s 2>&1',
-    $pemPath,
-    $localApkPath,
-    $sshUser,
-    $awsIp,
+    'timeout 600 scp -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no -i %s %s %s@%s:%s 2>&1',
+    escapeshellarg($pemPath),
+    escapeshellarg($localFilePath),
+    escapeshellarg($sshUser),
+    escapeshellarg($awsIp),
     $remoteFilePath
 );
 
@@ -99,31 +144,30 @@ writeLog($logFile, "SCP Output:\n$scpResult");
 writeLog($logFile, "SCP Exit Code: $scpExitCode");
 
 if ($scpExitCode !== 0) {
-    writeLog($logFile, "SCP failed. Fastlane trigger stopped.");
-
-    $errorMsg = "SCP upload failed. Check log.";
-    $safeMsg = $conn->real_escape_string($errorMsg);
-    $conn->query("UPDATE app_artifacts SET store_upload_status = 'failed', store_upload_message = '$safeMsg' WHERE id = $id");
-
+    $msg = "SCP upload failed. Check log.";
+    writeLog($logFile, $msg);
+    updateArtifactStatus($conn, $id, 'failed', $msg);
     $conn->close();
     exit;
 }
 
 // Step 2: Run Fastlane via SSH
-$conn->query("UPDATE app_artifacts SET store_upload_status = 'processing', store_upload_message = 'Triggering Fastlane on AWS...' WHERE id = $id");
+updateArtifactStatus($conn, $id, 'processing', 'Triggering Fastlane on AWS...');
 
-writeLog($logFile, "Triggering Fastlane on AWS for platform: " . $artifact['platform'] . "...");
+writeLog($logFile, "Triggering Fastlane on AWS for platform: $platform...");
 
+$timeoutSeconds = ($platform === 'iOS') ? 1800 : 1200;
 $sshCmd = sprintf(
-    'timeout 900 ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no -i "%s" %s@%s "/opt/app_deployer/run_fastlane.sh %s %s %s %s %s" 2>&1',
-    $pemPath,
-    $sshUser,
-    $awsIp,
-    escapeshellarg($artifact['platform']),
-    $remoteFilePath,
-    escapeshellarg($packageName),
-    escapeshellarg($remoteJsonKey),
-    escapeshellarg($remoteAppleKey)
+    'timeout %d ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no -i %s %s@%s %s 2>&1',
+    $timeoutSeconds,
+    escapeshellarg($pemPath),
+    escapeshellarg($sshUser),
+    escapeshellarg($awsIp),
+    escapeshellarg('/opt/app_deployer/run_fastlane.sh') . ' ' .
+    $remoteFilePath . ' ' .
+    escapeshellarg($packageName) . ' ' .
+    escapeshellarg($releaseTrack) . ' ' .
+    escapeshellarg($platform)
 );
 
 writeLog($logFile, "Executing: $sshCmd");
@@ -137,30 +181,30 @@ writeLog($logFile, "SSH Output:\n$sshResult");
 writeLog($logFile, "SSH Exit Code: $sshExitCode");
 
 // Step 3: Parse result
-if ($sshExitCode === 0 && strpos($sshResult, 'SUCCESS:') !== false) {
+if ($sshExitCode === 0 && (strpos($sshResult, 'SUCCESS:') !== false || strpos($sshResult, 'Successfully uploaded') !== false)) {
     writeLog($logFile, "Deployment completed successfully.");
 
-    $successMsg = "Uploaded to " . ($artifact['platform'] == 'Android' ? 'Play Store' : 'App Store');
-    $safeMsg = $conn->real_escape_string($successMsg);
-
-    $conn->query("UPDATE app_artifacts SET store_upload_status = 'success', store_upload_message = '$safeMsg', uploaded_to_store_at = NOW() WHERE id = $id");
+    $successMsg = ($platform === 'Android') ? 'Uploaded to Play Store' : 'Uploaded to TestFlight';
+    updateArtifactStatus($conn, $id, 'success', $successMsg, true);
 } else {
     writeLog($logFile, "Deployment failed.");
 
-    if (strpos($sshResult, 'Invalid JWT Signature') !== false || strpos($sshResult, 'invalid_grant') !== false) {
-        $errorMsg = "Google Play service account key is invalid. Replace play_store_key.json.";
-    } elseif (strpos($sshResult, 'version code') !== false) {
-        $errorMsg = "APK version code issue. Increase versionCode and retry.";
-    } elseif (strpos($sshResult, 'packageName') !== false || strpos($sshResult, 'package name') !== false) {
-        $errorMsg = "Package name issue. Check package_name in artifact.";
+    $lower = strtolower($sshResult);
+    if (strpos($sshResult, 'Invalid JWT Signature') !== false || strpos($lower, 'invalid_grant') !== false) {
+        $errorMsg = "Store API key is invalid. Check Play Store JSON or App Store .p8 key.";
+    } elseif (strpos($lower, 'version code') !== false) {
+        $errorMsg = "Version code already used. Increase Android versionCode and retry.";
+    } elseif (strpos($lower, 'bundle version') !== false || strpos($lower, 'cfbundleversion') !== false) {
+        $errorMsg = "iOS build number already used. Increase CFBundleVersion and retry.";
+    } elseif (strpos($lower, 'package') !== false || strpos($lower, 'bundle id') !== false || strpos($lower, 'app_identifier') !== false) {
+        $errorMsg = "Package name / Bundle ID issue. Check package_name in artifact.";
     } elseif ($sshExitCode === 124) {
         $errorMsg = "Fastlane timed out.";
     } else {
         $errorMsg = "Deployment failed. Check log.";
     }
 
-    $safeMsg = $conn->real_escape_string($errorMsg);
-    $conn->query("UPDATE app_artifacts SET store_upload_status = 'failed', store_upload_message = '$safeMsg' WHERE id = $id");
+    updateArtifactStatus($conn, $id, 'failed', $errorMsg);
 }
 
 $conn->close();

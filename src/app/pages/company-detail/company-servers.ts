@@ -15,7 +15,7 @@ interface ServerHealth {
 
 // SVG gauge constants
 const RADIUS = 45;
-const CIRC   = 2 * Math.PI * RADIUS; // ≈ 282.74
+const CIRC = 2 * Math.PI * RADIUS; // ≈ 282.74
 
 @Component({
   selector: 'app-company-servers',
@@ -264,14 +264,14 @@ const CIRC   = 2 * Math.PI * RADIUS; // ≈ 282.74
 export class CompanyServersComponent implements OnDestroy {
 
   private companyService = inject(CompanyService);
-  private http           = inject(HttpClient);
-  private cdr            = inject(ChangeDetectorRef);
+  private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
 
   get company() { return this.companyService.currentCompany(); }
 
-  health:   ServerHealth | null = null;
-  loading:  boolean = false;
-  error:    string  = '';
+  health: ServerHealth | null = null;
+  loading: boolean = false;
+  error: string = '';
   countdown: number = 30;
 
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -311,9 +311,9 @@ export class CompanyServersComponent implements OnDestroy {
       .split(',')
       .map(v => parseFloat(v.trim()));
     return [
-      { label: '1 Minute',  sublabel: 'Last minute avg',  value: parts[0] ?? 0 },
-      { label: '5 Minutes', sublabel: 'Last 5 min avg',   value: parts[1] ?? 0 },
-      { label: '15 Minutes',sublabel: 'Last 15 min avg',  value: parts[2] ?? 0 },
+      { label: '1 Minute', sublabel: 'Last minute avg', value: parts[0] ?? 0 },
+      { label: '5 Minutes', sublabel: 'Last 5 min avg', value: parts[1] ?? 0 },
+      { label: '15 Minutes', sublabel: 'Last 15 min avg', value: parts[2] ?? 0 },
     ];
   }
 
@@ -334,10 +334,13 @@ export class CompanyServersComponent implements OnDestroy {
   // ── API call ─────────────────────────────────────────────────────────────
   fetchHealth(adminUrl: string) {
     this.loading = true;
-    this.error   = '';
+    this.error = '';
     this.cdr.detectChanges();
 
-    this.http.post<any>(`${adminUrl}/eld_log/dispatch/view_server_health`, {}).subscribe({
+    const apiUrl = this.companyService.buildLiveApiUrl(adminUrl, 'serverHealth');
+    console.log('[LIVE_API][ServerHealth]', { company: this.company?.company_name, adminUrl, apiUrl });
+
+    this.http.post<any>(apiUrl, {}).subscribe({
       next: (res) => {
         if (res?.status === 'SUCCESS' && res?.result) {
           this.health = res.result as ServerHealth;
@@ -348,7 +351,7 @@ export class CompanyServersComponent implements OnDestroy {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.error   = `Could not reach ${adminUrl}. Make sure the server is accessible.`;
+        this.error = `Could not reach ${adminUrl}. Make sure the server is accessible.`;
         this.loading = false;
         this.cdr.detectChanges();
       }
@@ -384,7 +387,7 @@ export class CompanyServersComponent implements OnDestroy {
   }
 
   clearTimers() {
-    if (this.refreshTimer)   clearInterval(this.refreshTimer);
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.countdownTimer) clearInterval(this.countdownTimer);
   }
 
@@ -395,7 +398,7 @@ export class CompanyServersComponent implements OnDestroy {
 
   getDashArray(value: number): string {
     const clamped = Math.min(Math.max(value, 0), 100);
-    const fill    = (clamped / 100) * CIRC;
+    const fill = (clamped / 100) * CIRC;
     return `${fill} ${CIRC}`;
   }
 

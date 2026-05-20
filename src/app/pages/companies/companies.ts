@@ -20,6 +20,7 @@ interface Company {
   address: string;
   admin_url: string;
   created_at?: string;
+  updated_at?: string;
 }
 
 @Component({
@@ -576,7 +577,7 @@ export class CompaniesComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
     this.http.get<any>(`${API_BASE}/api/companies.php`).subscribe({
       next: (res) => {
-        this.companies = res.data ?? [];
+        this.companies = (res.data ?? []).map((c: Company) => ({ ...c, admin_url: this.normalizeAdminUrl(c.admin_url) }));
         this.loading = false;
         this.cdr.detectChanges();
       },
@@ -588,16 +589,53 @@ export class CompaniesComponent implements OnInit, OnDestroy {
     });
   }
 
+  normalizeAdminUrl(url: string): string {
+    let adminUrl = String(url || '').trim();
+
+    if (!adminUrl) return '';
+
+    if (!/^https?:\/\//i.test(adminUrl)) {
+      adminUrl = `https://${adminUrl}`;
+    }
+
+    adminUrl = adminUrl.replace(/\/+$/, '');
+
+    // Company admin_url must be base URL only. Remove API path if pasted by mistake.
+    adminUrl = adminUrl.replace(/\/eld_log\/.*$/i, '');
+
+    return adminUrl.replace(/\/+$/, '');
+  }
+
+  hasFullApiPath(url: string): boolean {
+    return /\/eld_log\//i.test(String(url || '').trim());
+  }
+
+  buildCompanyPayload() {
+    const raw = this.companyForm.value;
+    return {
+      ...raw,
+      admin_url: this.normalizeAdminUrl(raw.admin_url)
+    };
+  }
+
   submitForm() {
     this.submitted = true;
     if (this.companyForm.invalid) return;
+
+    if (this.hasFullApiPath(this.companyForm.value.admin_url)) {
+      this.showToast('Please enter base Admin URL only. Example: https://admin.truckertraceeld.com/', 'error');
+      return;
+    }
+
+    const payload = this.buildCompanyPayload();
+    this.companyForm.patchValue({ admin_url: payload.admin_url }, { emitEvent: false });
 
     this.submitting = true;
     this.cdr.detectChanges();
 
     if (this.isEditing && this.editCompanyId) {
       // ── PUT: Update existing company ───────────────────────────────────
-      this.http.put<any>(`${API_BASE}/api/companies.php?id=${this.editCompanyId}`, this.companyForm.value).subscribe({
+      this.http.put<any>(`${API_BASE}/api/companies.php?id=${this.editCompanyId}`, payload).subscribe({
         next: () => {
           this.submitting = false;
           this.closePanel();
@@ -614,7 +652,7 @@ export class CompaniesComponent implements OnInit, OnDestroy {
       });
     } else {
       // ── POST: Create new company ────────────────────────────────────────
-      this.http.post<any>(`${API_BASE}/api/companies.php`, this.companyForm.value).subscribe({
+      this.http.post<any>(`${API_BASE}/api/companies.php`, payload).subscribe({
         next: () => {
           this.submitting = false;
           this.closePanel();

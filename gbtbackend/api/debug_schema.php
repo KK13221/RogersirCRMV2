@@ -12,6 +12,12 @@ try {
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         print_r($row);
     }
+
+    echo "\nDESCRIBE companies:\n";
+    $stmt = $pdo->query("DESCRIBE companies");
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        print_r($row);
+    }
 } catch (PDOException $e) {
     echo "FAILURE: " . $e->getMessage();
 }

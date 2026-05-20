@@ -1,11 +1,10 @@
-import { Component, OnInit, HostListener, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { API_BASE_URL } from '../../config/api.config';
 import { LayoutService } from '../../services/layout.service';
-import { EldService, EldCompanyDashboard } from '../../services/eld.service';
 
 interface CustomerAppSummary {
   id: number;
@@ -18,10 +17,10 @@ interface CustomerAppSummary {
   deletedDuringMonth: number;
   serverStatus: 'Online' | 'Warning' | 'Offline';
   locked: boolean;
-  companyKey?: string;
-  lastSync?: string;
-  isSyncing?: boolean;
-  totalClients?: number;
+  dotNumber?: string;
+  liveSource?: string;
+  syncAt?: string;
+  rawCounts?: { clients?: number; activeVehicles?: number };
 }
 
 interface MonthlyTrend {
@@ -31,6 +30,14 @@ interface MonthlyTrend {
   deactivated: number;
   cumulativeDeactivated: number;
   serverStatus: 'Online' | 'Warning' | 'Offline';
+}
+
+interface CompanyInfo {
+  id: number;
+  company_name: string;
+  admin_url: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 @Component({
@@ -119,7 +126,7 @@ interface MonthlyTrend {
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <label class="space-y-1"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Company Name</span><input [value]="viewOnlyCustomer.customer" readonly class="w-full border-b border-slate-300 py-2 bg-transparent text-sm font-bold outline-none cursor-not-allowed" /></label>
                 <label class="space-y-1"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Safety Lock</span><input [value]="viewOnlyCustomer.locked ? 'Enabled' : 'Disabled'" readonly class="w-full border-b border-slate-300 py-2 bg-transparent text-sm font-bold outline-none cursor-not-allowed" /></label>
-                <label class="space-y-1"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">DOT Number</span><input value="Dummy-DOT-{{ viewOnlyCustomer.id }}" readonly class="w-full border-b border-slate-300 py-2 bg-transparent text-sm font-bold outline-none cursor-not-allowed" /></label>
+                <label class="space-y-1"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">DOT Number</span><input [value]="viewOnlyCustomer.dotNumber || 'Not available from live API'" readonly class="w-full border-b border-slate-300 py-2 bg-transparent text-sm font-bold outline-none cursor-not-allowed" /></label>
                 <label class="space-y-1"><span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Compliance Mode</span><input [value]="viewOnlyCustomer.app === 'ELD' ? 'ELD Compliance' : 'Standard Tracking'" readonly class="w-full border-b border-slate-300 py-2 bg-transparent text-sm font-bold outline-none cursor-not-allowed" /></label>
               </div>
             </div>
@@ -259,14 +266,13 @@ interface MonthlyTrend {
           <table class="w-full text-sm">
             <thead class="bg-slate-50 dark:bg-slate-800/70 text-xs uppercase tracking-wider text-slate-500">
               <tr>
-                <th class="px-6 py-3 text-left font-black">Company Name</th>
+                <th class="px-6 py-3 text-left font-black">Customer</th>
                 <th class="px-6 py-3 text-left font-black">Mm/Yr</th>
                 <th class="px-6 py-3 text-left font-black">App</th>
-                <th class="px-6 py-3 text-right font-black">Total Vehicles</th>
-                <th class="px-6 py-3 text-right font-black">Total Drivers</th>
-                <th class="px-6 py-3 text-right font-black">Total Clients</th>
+                <th class="px-6 py-3 text-right font-black">Active Start</th>
+                <th class="px-6 py-3 text-right font-black">Added</th>
+                <th class="px-6 py-3 text-right font-black">Deleted</th>
                 <th class="px-6 py-3 text-left font-black">Server Status</th>
-                <th class="px-6 py-3 text-left font-black">Last Sync</th>
                 <th class="px-6 py-3 text-right font-black">Actions</th>
               </tr>
             </thead>
@@ -295,21 +301,15 @@ interface MonthlyTrend {
                     </span>
                   </td>
                   <td class="px-6 py-4 text-right font-bold">{{ row.activeAtStart | number }}</td>
-                  <td class="px-6 py-4 text-right font-bold text-emerald-600">{{ row.addedDuringMonth | number }}</td>
-                  <td class="px-6 py-4 text-right font-bold text-purple-500">{{ row.totalClients | number }}</td>
+                  <td class="px-6 py-4 text-right font-bold text-emerald-600">+{{ row.addedDuringMonth | number }}</td>
+                  <td class="px-6 py-4 text-right font-bold text-red-500">-{{ row.deletedDuringMonth | number }}</td>
                   <td class="px-6 py-4">
                     <span class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full" [class]="getServerClass(row.serverStatus)">
                       <span class="w-2 h-2 rounded-full" [class]="getServerDotClass(row.serverStatus)"></span>{{ row.serverStatus }}
                     </span>
                   </td>
-                  <td class="px-6 py-4 text-xs font-mono text-slate-500">
-                    {{ row.lastSync || 'Never' }}
-                  </td>
                   <td class="px-6 py-4 text-right">
                     <div class="flex items-center justify-end gap-2">
-                      <button (click)="syncCompany(row); $event.stopPropagation()" [disabled]="row.isSyncing" class="p-2 rounded-lg hover:bg-emerald-50 text-emerald-600 disabled:opacity-50">
-                        <span class="material-symbols-outlined text-[18px]" [class.animate-spin]="row.isSyncing">sync</span>
-                      </button>
                       <button (click)="editCustomer(row); $event.stopPropagation()" class="p-2 rounded-lg hover:bg-blue-50 text-blue-600">
                         <span class="material-symbols-outlined text-[18px]">edit</span>
                       </button>
@@ -742,7 +742,7 @@ interface MonthlyTrend {
       <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" (click)="closeTransferModal()"></div>
       <div class="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-6 duration-300">
         <div class="bg-[#004a99] px-6 py-4 flex items-center justify-between text-white">
-          <div><p class="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">Dummy Transfer Flow</p><h3 class="text-lg font-black mt-1">Transfer Customer Dashboard Data</h3></div>
+          <div><p class="text-[10px] font-black uppercase tracking-[0.22em] text-white/70">Live Transfer Flow</p><h3 class="text-lg font-black mt-1">Transfer Customer Dashboard Data</h3></div>
           <button (click)="closeTransferModal()" class="hover:bg-white/10 p-2 rounded-lg transition-colors"><span class="material-symbols-outlined text-[20px]">close</span></button>
         </div>
         <div class="p-6 space-y-6">
@@ -755,9 +755,9 @@ interface MonthlyTrend {
           @if (transferPreview) {
             <div class="rounded-2xl border border-primary/10 overflow-hidden"><div class="px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-primary/10 flex items-center justify-between"><h4 class="text-sm font-black text-slate-800 dark:text-white">Transfer Preview</h4><span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-700">Backend Pending</span></div><div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-5"><div><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Apps</p><p class="text-xl font-black text-slate-900 dark:text-white mt-1">{{ transferPreview.apps }}</p></div><div><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Active Units</p><p class="text-xl font-black text-slate-900 dark:text-white mt-1">{{ transferPreview.activeUnits }}</p></div><div><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Added</p><p class="text-xl font-black text-emerald-600 mt-1">+{{ transferPreview.added }}</p></div><div><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Deleted</p><p class="text-xl font-black text-red-500 mt-1">-{{ transferPreview.deleted }}</p></div></div></div>
           }
-          <div class="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 p-4"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Future Backend API</p><code class="text-xs text-slate-600 dark:text-slate-300">POST /api/customer-transfer</code><p class="text-xs text-slate-500 mt-2">Payload: fromCompanyId, toCompanyId, transferAllDashboardData, approvedBy, reviewRequired</p></div>
+          <div class="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 p-4"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Backend API</p><code class="text-xs text-slate-600 dark:text-slate-300">POST /api/customer-transfer (pending)</code><p class="text-xs text-slate-500 mt-2">Payload: fromCompanyId, toCompanyId, transferAllDashboardData, approvedBy, reviewRequired</p></div>
         </div>
-        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3"><button (click)="closeTransferModal()" class="px-5 py-2 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">Cancel</button><button (click)="submitDummyTransfer()" [disabled]="!canSubmitTransfer" class="px-6 py-2 bg-[#004a99] disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-[10px] font-black uppercase rounded hover:bg-[#003d7e] shadow-lg transition-all">Prepare Transfer Request</button></div>
+        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3"><button (click)="closeTransferModal()" class="px-5 py-2 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">Cancel</button><button (click)="submitTransferRequest()" [disabled]="!canSubmitTransfer" class="px-6 py-2 bg-[#004a99] disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-[10px] font-black uppercase rounded hover:bg-[#003d7e] shadow-lg transition-all">Prepare Transfer Request</button></div>
       </div>
     </div>
   }
@@ -805,25 +805,13 @@ export class CustomerDashboardComponent implements OnInit {
     locked: true
   };
 
-  months = ['Apr/2026', 'Mar/2026', 'Feb/2026', 'Jan/2026'];
+  months: string[] = [];
   appTypes: ('ELD' | 'GPS' | 'REEFER' | 'DASHCAM')[] = ['ELD', 'GPS', 'REEFER', 'DASHCAM'];
 
   summaries: CustomerAppSummary[] = [];
-
-  trendData: MonthlyTrend[] = [
-    { month: 'May', active: 78, activated: 5, deactivated: 3, cumulativeDeactivated: 12, serverStatus: 'Online' },
-    { month: 'Jun', active: 81, activated: 7, deactivated: 4, cumulativeDeactivated: 16, serverStatus: 'Online' },
-    { month: 'Jul', active: 88, activated: 9, deactivated: 2, cumulativeDeactivated: 18, serverStatus: 'Online' },
-    { month: 'Aug', active: 91, activated: 8, deactivated: 5, cumulativeDeactivated: 23, serverStatus: 'Warning' },
-    { month: 'Sep', active: 96, activated: 9, deactivated: 4, cumulativeDeactivated: 27, serverStatus: 'Online' },
-    { month: 'Oct', active: 102, activated: 12, deactivated: 6, cumulativeDeactivated: 33, serverStatus: 'Online' },
-    { month: 'Nov', active: 108, activated: 9, deactivated: 3, cumulativeDeactivated: 36, serverStatus: 'Online' },
-    { month: 'Dec', active: 111, activated: 5, deactivated: 2, cumulativeDeactivated: 38, serverStatus: 'Online' },
-    { month: 'Jan', active: 115, activated: 8, deactivated: 4, cumulativeDeactivated: 42, serverStatus: 'Warning' },
-    { month: 'Feb', active: 120, activated: 8, deactivated: 3, cumulativeDeactivated: 45, serverStatus: 'Online' },
-    { month: 'Mar', active: 125, activated: 10, deactivated: 5, cumulativeDeactivated: 50, serverStatus: 'Online' },
-    { month: 'Apr', active: 127, activated: 4, deactivated: 2, cumulativeDeactivated: 52, serverStatus: 'Online' },
-  ];
+  trendData: MonthlyTrend[] = [];
+  loadingLiveDashboard = false;
+  liveDashboardError = '';
 
   artifacts: any[] = [];
   showContextMenu = false;
@@ -837,97 +825,137 @@ export class CustomerDashboardComponent implements OnInit {
   transferPreview: { apps: number; activeUnits: number; added: number; deleted: number } | null = null;
 
   layout = inject(LayoutService);
-  cdr = inject(ChangeDetectorRef);
-  eldService = inject(EldService);
 
   constructor(private router: Router, private http: HttpClient) { }
 
   ngOnInit() {
     this.loadArtifacts();
-    
-    const savedAppType = localStorage.getItem('selectedAppType');
-    if (savedAppType) {
-      this.selectedAppType = savedAppType as any;
-      this.layout.setSelectedApp(this.selectedAppType);
-    } else {
-      this.selectedAppType = this.layout.selectedApp();
-    }
-
-    if (this.selectedAppType === 'ELD' || this.selectedAppType === 'ALL') {
-      this.loadRealCustomers();
-    } else {
-      this.summaries = [];
-    }
-  }
-
-  selectAppType(type: string) {
-    this.selectedAppType = type as any;
-    localStorage.setItem('selectedAppType', type);
-    this.layout.setSelectedApp(type as any);
-    if (type === 'ELD' || type === 'ALL') {
-      this.loadRealCustomers();
-    }
+    this.loadLiveCustomerDashboardData();
+    // Sync with global category selection
+    this.selectedAppType = this.layout.selectedApp();
   }
 
   loadArtifacts() {
-    this.http.get<any[]>(`${API_BASE_URL}/api/apps.php`).subscribe(data => {
+    this.http.get<any[]>(`${API_BASE_URL}api/apps.php`).subscribe(data => {
       this.artifacts = data || [];
     });
   }
 
-  loadRealCustomers() {
-    this.eldService.getAllCompaniesDashboard().subscribe({
+  normalizeAdminUrl(url: string | null | undefined): string {
+    let adminUrl = String(url || '').trim();
+    if (!adminUrl) return '';
+    if (!/^https?:\/\//i.test(adminUrl)) adminUrl = `https://${adminUrl}`;
+    adminUrl = adminUrl.replace(/\/eld_log\/.*$/i, '');
+    return adminUrl.replace(/\/+$/, '');
+  }
+
+  buildEldUrl(adminUrl: string, path: string): string {
+    return `${this.normalizeAdminUrl(adminUrl)}${path}`;
+  }
+
+  loadLiveCustomerDashboardData() {
+    const selectedApp = this.selectedAppType || 'ALL';
+    const liveDashboardUrl = `${API_BASE_URL}api/customer_live.php?app=${encodeURIComponent(selectedApp)}&t=${Date.now()}`;
+    this.loadingLiveDashboard = true;
+    this.liveDashboardError = '';
+    console.log('[CUSTOMER_DASHBOARD] Loading live dashboard:', liveDashboardUrl) ;
+
+    this.http.get<any>(liveDashboardUrl).subscribe({
       next: (res) => {
-        if (res.status === 'success' && res.data) {
-          this.summaries = res.data.map((company, index) => {
-            return {
-              id: index + 1,
-              companyId: 'CMP-' + index,
-              customer: company.company,
-              companyKey: company.company_key,
-              monthYear: this.selectedMonth,
-              app: 'ELD',
-              activeAtStart: company.active_vehicles, 
-              addedDuringMonth: company.total_drivers,
-              deletedDuringMonth: 0,
-              totalClients: company.total_clients,
-              serverStatus: (company.server_status === 'online' ? 'Online' : 'Offline') as any,
-              lastSync: company.last_sync,
-              locked: true,
-              isSyncing: false
-            };
-          });
-          this.cdr.detectChanges();
-        }
+        const rows: CustomerAppSummary[] = Array.isArray(res) ? res : (res?.data || []);
+        this.summaries = rows.filter(Boolean).map(row => ({
+          ...row,
+          id: Number(row.id),
+          activeAtStart: Number(row.activeAtStart || 0),
+          addedDuringMonth: Number(row.addedDuringMonth || 0),
+          deletedDuringMonth: Number(row.deletedDuringMonth || 0),
+          serverStatus: row.serverStatus || 'Offline',
+          locked: row.locked !== false
+        }));
+
+        this.months = Array.from(new Set(this.summaries.map(item => item.monthYear).filter(Boolean)));
+        if (!this.months.length) this.months = [this.getCurrentMonthYear()];
+        if (!this.selectedMonth || !this.months.includes(this.selectedMonth)) this.selectedMonth = this.months[0];
+
+        this.rebuildTrendData();
+        this.loadingLiveDashboard = false;
+        console.log('[CUSTOMER_DASHBOARD] Live rows:', this.summaries);
       },
-      error: (err) => console.error("Failed to load ELD companies", err)
+      error: (err) => {
+        console.error('[CUSTOMER_DASHBOARD] Live dashboard load failed:', err);
+        this.summaries = [];
+        this.trendData = [];
+        this.months = [this.getCurrentMonthYear()];
+        this.selectedMonth = this.months[0];
+        this.liveDashboardError = err?.error?.message || err?.message || 'Failed to load live customer dashboard.';
+        this.loadingLiveDashboard = false;
+      }
     });
   }
 
-  syncCompany(record: CustomerAppSummary) {
-    if (!record.companyKey) return;
-    record.isSyncing = true;
-    this.cdr.detectChanges();
-    
-    this.eldService.syncCompany(record.companyKey).subscribe({
-      next: (res) => {
-        record.isSyncing = false;
-        if (res.status === 'success' && res.summary) {
-          record.activeAtStart = res.summary.active_vehicles;
-          record.addedDuringMonth = res.summary.total_drivers;
-          record.totalClients = res.summary.total_clients;
-          record.serverStatus = res.summary.server_status === 'online' ? 'Online' : 'Offline';
-          record.lastSync = new Date().toISOString().replace('T', ' ').substring(0, 19);
-        }
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        console.error("Failed to sync", err);
-        record.isSyncing = false;
-        record.serverStatus = 'Offline';
-        this.cdr.detectChanges();
-      }
+  private getCurrentMonthYear(): string {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).replace(' ', '/');
+  }
+
+  private rebuildTrendData() {
+    const grouped = new Map<string, CustomerAppSummary[]>();
+    for (const row of this.summaries) {
+      const key = row.monthYear || this.getCurrentMonthYear();
+      grouped.set(key, [...(grouped.get(key) || []), row]);
+    }
+
+    let cumulativeDeleted = 0;
+    this.trendData = Array.from(grouped.entries()).map(([monthYear, rows]) => {
+      const deleted = rows.reduce((sum, row) => sum + Number(row.deletedDuringMonth || 0), 0);
+      cumulativeDeleted += deleted;
+      return {
+        month: monthYear.split('/')[0],
+        active: rows.reduce((sum, row) => sum + Number(row.activeAtStart || 0), 0),
+        activated: rows.reduce((sum, row) => sum + Number(row.addedDuringMonth || 0), 0),
+        deactivated: deleted,
+        cumulativeDeactivated: cumulativeDeleted,
+        serverStatus: rows.some(row => row.serverStatus === 'Offline') ? 'Offline' : (rows.some(row => row.serverStatus === 'Warning') ? 'Warning' : 'Online')
+      } as MonthlyTrend;
     });
+  }
+
+  private extractArray(response: any): any[] {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.result)) return response.result;
+    if (Array.isArray(response?.clients)) return response.clients;
+    if (Array.isArray(response?.vehicles)) return response.vehicles;
+    if (Array.isArray(response?.data?.clients)) return response.data.clients;
+    if (Array.isArray(response?.data?.vehicles)) return response.data.vehicles;
+    return [];
+  }
+
+  private getServerStatus(serverResponse: any): 'Online' | 'Warning' | 'Offline' {
+    if (serverResponse?.__error) return 'Offline';
+    const text = JSON.stringify(serverResponse || {}).toLowerCase();
+    if (text.includes('offline') || text.includes('down') || text.includes('fail')) return 'Offline';
+    if (text.includes('warning') || text.includes('slow') || text.includes('issue')) return 'Warning';
+    return 'Online';
+  }
+
+  private mapCompanyToSummary(company: CompanyInfo, clientsResponse: any, vehiclesResponse: any, serverResponse: any): CustomerAppSummary {
+    const clients = this.extractArray(clientsResponse);
+    const vehicles = this.extractArray(vehiclesResponse);
+    const activeCount = vehicles.length || clients.length || 0;
+
+    return {
+      id: Number(company.id),
+      companyId: `CMP-${company.id}`,
+      customer: company.company_name,
+      monthYear: this.selectedMonth,
+      app: 'ELD',
+      activeAtStart: activeCount,
+      addedDuringMonth: 0,
+      deletedDuringMonth: 0,
+      serverStatus: this.getServerStatus(serverResponse),
+      locked: true
+    };
   }
 
   enterDetails(type: any, record: CustomerAppSummary | null = null) {
@@ -957,14 +985,14 @@ export class CustomerDashboardComponent implements OnInit {
       r.monthYear === this.selectedMonth &&
       (this.selectedAppType === 'ALL' || r.app === this.selectedAppType)
     );
-    const active = rows.reduce((sum, row) => sum + row.activeAtStart, 0); // Active Vehicles
-    const added = rows.reduce((sum, row) => sum + row.addedDuringMonth, 0); // Total Drivers
-    const clients = rows.reduce((sum, row) => sum + (row.totalClients || 0), 0); // Total Clients
+    const active = rows.reduce((sum, row) => sum + row.activeAtStart, 0);
+    const added = rows.reduce((sum, row) => sum + row.addedDuringMonth, 0);
+    const deleted = rows.reduce((sum, row) => sum + row.deletedDuringMonth, 0);
     const issues = rows.filter(row => row.serverStatus !== 'Online').length;
     return [
-      { label: 'Active Vehicles', value: active.toLocaleString(), badge: 'Total', icon: 'local_shipping', bg: 'bg-blue-50 dark:bg-blue-900/20', color: 'text-blue-600', badgeClass: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20' },
-      { label: 'Total Drivers', value: added.toLocaleString(), badge: 'Total', icon: 'person', bg: 'bg-emerald-50 dark:bg-emerald-900/20', color: 'text-emerald-600', badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' },
-      { label: 'Total Clients', value: clients.toLocaleString(), badge: 'Total', icon: 'business', bg: 'bg-purple-50 dark:bg-purple-900/20', color: 'text-purple-500', badgeClass: 'bg-purple-50 text-purple-500 dark:bg-purple-900/20' },
+      { label: 'Active Devices', value: active.toLocaleString(), badge: 'Start Month', icon: 'devices', bg: 'bg-blue-50 dark:bg-blue-900/20', color: 'text-blue-600', badgeClass: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20' },
+      { label: 'Apps Added', value: added.toLocaleString(), badge: 'Running Sum', icon: 'add_circle', bg: 'bg-emerald-50 dark:bg-emerald-900/20', color: 'text-emerald-600', badgeClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20' },
+      { label: 'Apps Deleted', value: deleted.toLocaleString(), badge: 'Running Sum', icon: 'remove_circle', bg: 'bg-red-50 dark:bg-red-900/20', color: 'text-red-500', badgeClass: 'bg-red-50 text-red-500 dark:bg-red-900/20' },
       { label: 'Server Issues', value: issues.toLocaleString(), badge: 'Status', icon: 'dns', bg: 'bg-amber-50 dark:bg-amber-900/20', color: 'text-amber-600', badgeClass: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20' },
     ];
   }
@@ -1068,23 +1096,24 @@ export class CustomerDashboardComponent implements OnInit {
       alert('Please enter a company name.');
       return;
     }
-    const nextId = Math.max(...this.summaries.map(item => item.id), 0) + 1;
-    this.summaries = [
-      ...this.summaries,
-      {
-        id: nextId,
-        companyId: this.generatedCompanyId,
-        customer: this.newCustomer.customer.trim(),
-        monthYear: this.selectedMonth,
-        app: this.newCustomer.app,
-        activeAtStart: 0,
-        addedDuringMonth: 0,
-        deletedDuringMonth: 0,
-        serverStatus: 'Online',
-        locked: this.newCustomer.locked
-      }
-    ];
-    this.showAddModal = false;
+
+    const payload = {
+      company_name: this.newCustomer.customer.trim(),
+      package_name: '',
+      owner_name: 'N/A',
+      owner_mobile: '',
+      owner_email: '',
+      address: '',
+      admin_url: ''
+    };
+
+    this.http.post<any>(`${API_BASE_URL}api/companies.php`, payload).subscribe({
+      next: () => {
+        this.showAddModal = false;
+        this.loadLiveCustomerDashboardData();
+      },
+      error: (err) => alert(err?.error?.message || 'Company creation failed.')
+    });
   }
 
   editCustomer(row: CustomerAppSummary) {
@@ -1193,7 +1222,7 @@ export class CustomerDashboardComponent implements OnInit {
     };
   }
 
-  submitDummyTransfer() {
+  submitTransferRequest() {
     if (!this.canSubmitTransfer) {
       alert('Please select different source and target companies.');
       return;
@@ -1202,12 +1231,12 @@ export class CustomerDashboardComponent implements OnInit {
     alert(`Transfer request prepared:
 ${this.transferFromCustomer} -> ${this.transferToCustomer}
 
-Status: Dummy only. Backend API will be connected later.`);
+Status: Transfer API is pending. No local/dummy data was changed.`);
     this.closeTransferModal();
   }
 
   exportReport() {
-    alert('Exporting customer dashboard summary...');
+    alert('Export will use the currently loaded live customer dashboard records.');
   }
 
   drillDown(kpi: any) {
